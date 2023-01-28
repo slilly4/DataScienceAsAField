@@ -1,0 +1,117 @@
+---
+title: "NY Shooting Incident Analysis by Boro"
+author: "Data Science Student"
+date: "January 2, 2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+## Introduction
+I would like to investigate which boro in New York is the safest place to live.  To do so, I will load NYPD shooting incident data for analysis. The NYPD Shooting Incident Data (Historic) dataset lists each shooting incident in New York City through end of the previous calendar year.  More information about this dataset can be found on data.gov.     
+
+```
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+data <- read_csv(url_in)
+```
+
+#### Dataset Description: 
+
+This is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included. This data can be used by the public to explore the nature of shooting/criminal activity. 
+
+```{r, include=FALSE}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+data <- read_csv(url_in)
+```
+
+## Dataset Summary Information
+
+```{r, include=TRUE}
+summary(data)
+```
+
+## Updating Data Types and Removing Extraneous Columns
+
+To prepare the data, the date and time fields were combined and cast as a POSIX datetime object.  Categorical data were assigned a factor data type.  The incident key, which is unique for each incident was cast as a character type.  
+
+There were numerous fields with no values.  These were re-labeled to match the Unknown category for the appropriate field.
+
+As this analysis will not focus on longitude and latitude, these geographical fields were dropped from the data frame.  
+
+```{r, include=TRUE}
+data[['DATETIME']] <- paste(data$OCCUR_DATE, "-" ,data$OCCUR_TIME)
+data[['DATETIME']] <- as.POSIXct(data[['DATETIME']],format = "%m/%d/%Y - %H:%M:%S")
+data[['YEAR']] <- as.numeric(format(data$DATETIME, "%Y"))
+data[['VIC_SEX']] <- as.factor(data$VIC_SEX)
+data[['VIC_RACE']] <- as.factor(data$VIC_RACE)
+data[['VIC_AGE_GROUP']] <- as.factor(data$VIC_AGE_GROUP)
+data[['PERP_SEX']] <- as.factor(data$PERP_SEX)
+data[['PERP_RACE']] <- as.factor(data$PERP_RACE)
+data[['PERP_AGE_GROUP']] <- as.factor(data$PERP_AGE_GROUP)
+data[['BORO']] <- as.factor(data$BORO)
+data[['PRECINCT']] <- as.factor(data$PRECINCT)
+data[['INCIDENT_KEY']] <- as.character(data$INCIDENT_KEY)
+data[['JURISDICTION_CODE']] <- as.factor(data$JURISDICTION_CODE)
+
+data = subset(data, select = -c(Lon_Lat,Longitude,Latitude,Y_COORD_CD,X_COORD_CD,OCCUR_TIME,OCCUR_DATE) )
+
+data['PERP_AGE_GROUP'][is.na(data['PERP_AGE_GROUP'])] <- "UNKNOWN"
+data['PERP_SEX'][is.na(data['PERP_SEX'])] <- "U"
+data['PERP_RACE'][is.na(data['PERP_RACE'])] <- "UNKNOWN"
+data['VIC_AGE_GROUP'][is.na(data['VIC_AGE_GROUP'])] <- "UNKNOWN"
+data['VIC_SEX'][is.na(data['VIC_SEX'])] <- "U"
+data['VIC_RACE'][is.na(data['VIC_RACE'])] <- "UNKNOWN"
+
+summary(data)
+```
+
+
+## Analysis
+A first question to be evaluated is whether the number of shootings are different across different parts of New York.  First a simple bar chart has been provided to exhibit the total number of shootings that have taken place in each New York boro since the beginning of the data set.  This shows that the greatest number of shoots took place in Brooklyn, with over 10,000, while the Bronx trails slightly, with nearly 8,000 shootings over that time period.  
+
+```{r, include=TRUE}
+barplot(table(data$BORO),xlab="Boro",ylab="Number of Shootings",main="Number of Shootings per Boro",space = 2)
+```
+
+A second question is whether the number of shootings in each boro has flutated over time.  Therefore, a line graph has been provided to plot the number of shootings per year in each boro.  It shows through 2019 there were steep declines in the number of shooting throughout the city, with the greatest drop taking place in Brooklyn.  However, from 2020 onwards, the numbers have risen strikingly.  This corresponds with the years of the pandemic.   
+
+
+```{r, include=TRUE}
+
+BORO_YEAR <- data %>% group_by(BORO,YEAR) %>% 
+  summarise(total_count=n(),.groups = 'drop') %>% 
+  as.data.frame()
+BORO_YEAR <- BORO_YEAR %>% pivot_wider(names_from = BORO, values_from = total_count)
+BORO_YEAR['STATEN'] <- BORO_YEAR['STATEN ISLAND']
+
+colors <- c("BRONX" = "red", "BROOKLYN" = "blue", "MANHATTAN" = "green", "QUEENS" = "orange", "STATEN ISLAND" = "black")
+ggplot(BORO_YEAR, aes(x=YEAR)) + 
+  geom_line(aes(y = BRONX, color = "BRONX")) + 
+  geom_line(aes(y = BROOKLYN, color="BROOKLYN")) + 
+  geom_line(aes(y = MANHATTAN, color="MANHATTAN")) + 
+  geom_line(aes(y = QUEENS, color="QUEENS")) + 
+  geom_line(aes(y = STATEN, color="STATEN ISLAND")) + 
+  labs(x = "Year", y = "Boro", color = "Legend", title = "Shootings Per Year by Boro") +
+  scale_color_manual(values = colors)
+```
+
+## Future Investigation
+
+After creating these two plots, I would next want to investigate how I could compare the boros using the same scale.  For instance, while the graphs are true in absolute terms, comparisons between the boros are misleading because they may have different populations.  I would want to import population statistics to the model and create a shootings per 1,000 people measure.  Then I could better compare the incidence of shootings.  
+
+## Conclusion
+
+The intial analysis suggests that Staten Island would be the safest part of the New York in which to live.  The number of shootings trails behind the other boros.  However, while providing some interesting first analysis of the data set, bias is present because of the differences in population between the boros.  It will be necessary to create a better measure to compare the number of shooting incidents in each boro.  Personal bias includes the fact that I am only looking at shootings as a measure of safety.  I live in a city with gun violence, so I assume that gun violence is a proxy for crime in general. However, perhaps other forms of crime are more prevasive or destructive than gun violence in New York.  To get a better understanding of whether Staten Island is the safest boro, it would necessary to expand the data model to include other crime categories.  
+
+## Loaded Libraries
+```{r, include=TRUE}
+(.packages())
+```
+
