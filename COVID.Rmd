@@ -1,0 +1,199 @@
+---
+title: "Analyzing COVID Cases and Deaths Through the Lens of Poverty"
+author: "Data Science Student"
+date: "January 28, 2023"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn=-1)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(magrittr)
+library(lubridate)
+
+base_url <- 
+"https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c(
+"time_series_covid19_confirmed_US.csv",
+"time_series_covid19_deaths_US.csv"
+)
+
+urls <- str_c(base_url,file_names)
+
+us_cases <- read_csv(urls[1])
+us_deaths <- read_csv(urls[2])
+```
+
+## Introduction
+For this project, I would like to evaluate the impact of COVID as it relates to poverty.  In particular, I would like to determine whether US states that have higher levels of poverty fared worse throughout the pandemic.  In order to undertake this analysis, I will use the John Hopkins COVID time series dataset, which can be found on GitHub, in addition to US poverty statistics available through the United States Department of Agriculture.  
+
+
+#### John Hopkins Dataset: 
+
+From John Hopkins University, there are two time series tables available for confirmed cases and deaths in the United States, reported at the county level. They are named time_series_covid19_confirmed_US.csv, time_series_covid19_deaths_US.csv, respectively.  The data begin with the start of the pandemic in the US, and they are current as of the present.  These will be loaded from the web.  
+
+```
+base_url <- 
+"https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/"
+
+file_names <- c(
+"time_series_covid19_confirmed_US.csv",
+"time_series_covid19_deaths_US.csv"
+)
+
+urls <- str_c(base_url,file_names)
+
+us_cases <- read_csv(urls[1])
+us_deaths <- read_csv(urls[2])
+```
+
+#### USDA Poverty Rate Statistics: 
+
+The US Department of Agriculture Economic Research Service provides poverty rate statistics.  Year 2020 poverty rate information has been chosen to coincide with the beginning of the COVID19 pandemic.  No downloadable dataset is available, so this data is added manually to the data model.  The original information can be found here: https://data.ers.usda.gov/reports.aspx?ID=17826 
+
+```{r, include=TRUE}
+Province_State <- c("Alabama","Alaska","Arizona","Arkansas","California","Colorado",
+"Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho",
+"Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland",
+"Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","National",
+"Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York",
+"North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania",
+"Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah",
+"Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming")
+
+poverty_rate <- c(14.9,9.6,12.8,15.2,11.5,9,9.7,10.9,15,12.4,14,8.9,10.1,11,11.6,
+10.2,10.6,14.9,17.8,10.6,9,9.4,12.6,8.3,18.7,12.1,12.4,11.9,9.2,12.5,7,9.4,16.8,
+12.7,12.9,10.2,12.6,14.3,11,10.9,10.6,13.8,11.6,13.6,13.4,7.3,9.4,9.2,9.5,15.8,10,9.2)
+
+Poverty_By_State <- data.frame(Province_State, poverty_rate)
+```
+
+#### Data Preparation: 
+To make the John Hopkins data useful, it will be necessary to pivot the columns for the two datasets.  Then it will be useful to join the two into a single dataframe.  Additionally, the information will be grouped by state, to provide a more aggregated view of the data.  
+
+```{r, include=TRUE}
+us_cases <- us_cases %>%
+  pivot_longer(cols = -(UID:Combined_Key),
+               names_to = "date",
+               values_to = "cases") %>%
+  select(Admin2:cases) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+```
+
+```{r, include=TRUE}
+us_deaths <- us_deaths %>%
+  pivot_longer(cols = -(UID:Population),
+               names_to = "date",
+               values_to = "deaths") %>%
+  select(Admin2:deaths) %>%
+  mutate(date = mdy(date)) %>%
+  select(-c(Lat,Long_))
+```
+
+```{r, include=TRUE}
+US <- us_cases %>%
+  full_join(us_deaths)
+```
+
+```{r, include=TRUE}
+US_by_state <- US %>%
+  group_by(Province_State, Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths),
+            Population = sum(Population)) %>%
+  select(Province_State, Country_Region, date,
+         cases, deaths, Population) %>%
+  ungroup()
+```
+
+#### Additional Variables: 
+To better make comparisons between states, a cases per thousand variable and a deaths per thousand variable is added.  In addition, the poverty rate information is joined to the single table.  This completes the data preparation needed for analysis.
+
+```{r, include=TRUE}
+US_state_totals <- US_by_state %>%
+  group_by(Province_State) %>%
+  summarize(deaths = max(deaths), cases = max(cases),
+            population = max(Population),
+            cases_per_thou = 1000* cases / population,
+            deaths_per_thou = 1000* deaths / population) %>%
+  filter(cases >0, population > 0)
+```
+
+```{r, include=TRUE}
+
+US_state_totals <- merge(x=US_state_totals,y=Poverty_By_State, 
+          by="Province_State", all.x=TRUE)
+
+US_state_totals <- US_state_totals %>% filter(!is.na(poverty_rate))
+
+head(US_state_totals)
+```
+
+#### Data Models: 
+I would like to see whether a poverty rate will successfully predict cases per thousand and deaths per thousands with a linear model.  The predicted values are added to the data frame below.
+
+```{r, include=TRUE}
+mod_cases <-lm(cases_per_thou ~ poverty_rate, data = US_state_totals)
+mod_deaths <-lm(deaths_per_thou ~ poverty_rate, data = US_state_totals)
+summary(mod_cases)
+summary(mod_deaths)
+```
+
+```{r, include=TRUE}
+US_pov_w_pred <- US_state_totals %>% 
+    mutate(pred_cases = predict(mod_cases)) %>% 
+      mutate(pred_deaths = predict(mod_deaths))
+
+head(US_pov_w_pred)
+```
+
+#### Predicting COVID Cases based on Poverty Rate:
+
+The R-Squared value for this model is 0.03755, which indicates that there is essentially no efficacy in using the poverty rate to predict the number of cases of COVID.  The correlation coefficient is .24, again suggesting that Poverty rate is not a strong predictor here.  In the graph below, the red predicted dots do little to capture any trend.    
+
+```{r, include=TRUE}
+x <- US_pov_w_pred["cases_per_thou"]
+y <- US_pov_w_pred["poverty_rate"]
+cor(x, y) 
+```
+
+```{r, include=TRUE}
+US_pov_w_pred %>% ggplot() +
+    geom_point(aes(x = poverty_rate, y = cases_per_thou), color = "blue") +
+    geom_point(aes(x = poverty_rate, y = pred_cases), color = "red")
+```
+
+#### Predicting COVID Deaths based on Poverty Rate:
+
+Interestingly, the R-Squared value for this second model is 0.4272, which makes it much more effective than the previous one.  In addition, the correlation coefficient between the two variables in .662, suggesting that there is a moderate correlation between poverty rate and the number of COVID deaths.  The higher the poverty rate, the more likely it is that someone will die of COVID.
+
+```{r, include=TRUE}
+x <- US_pov_w_pred["deaths_per_thou"]
+y <- US_pov_w_pred["poverty_rate"]
+cor(x, y) 
+```
+
+
+```{r, include=TRUE}
+US_pov_w_pred %>% ggplot() +
+    geom_point(aes(x = poverty_rate, y = deaths_per_thou), color = "blue") +
+    geom_point(aes(x = poverty_rate, y = pred_deaths), color = "red")
+```
+
+#### Conclusions:
+
+The two models suggest that COVID spread with little regard to the relative wealth of individuals in the United States.  Individuals in states with lower poverty rates did not escape being infected more than those with higher poverty rates.  However, overall, more individuals in states with higher poverty rates died than those in states with lower poverty rates.  Correlation does not necessarily mean causation.  However, one interpretation of the results is that individuals in high poverty states had fewer resources to combat the illness or less access to necessary health care.   
+
+Possible sources of bias in the analysis include data that was not compiled accurately.  In addition, other variables which have more explanatory power might not have been selected due to preconceived ideas about how diseases affected a country.  It is also possible that I am suffering from confirmation bias, in which I would like to find a strong correlation between poverty and disease impact.  
+
+
+
+## Loaded Libraries
+```{r, include=TRUE}
+(.packages())
+```
