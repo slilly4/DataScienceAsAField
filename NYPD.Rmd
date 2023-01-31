@@ -1,7 +1,7 @@
 ---
 title: "NY Shooting Incident Analysis by Boro"
 author: "Data Science Student"
-date: "January 2, 2022"
+date: "January 2, 2023"
 output:
   pdf_document: default
   html_document: default
@@ -108,7 +108,7 @@ After creating these two plots, I would next want to investigate how I could com
 
 ## Conclusion
 
-The intial analysis suggests that Staten Island would be the safest part of the New York in which to live.  The number of shootings trails behind the other boros.  However, while providing some interesting first analysis of the data set, bias is present because of the differences in population between the boros.  It will be necessary to create a better measure to compare the number of shooting incidents in each boro.  Personal bias includes the fact that I am only looking at shootings as a measure of safety.  I live in a city with gun violence, so I assume that gun violence is a proxy for crime in general. However, perhaps other forms of crime are more prevasive or destructive than gun violence in New York.  To get a better understanding of whether Staten Island is the safest boro, it would necessary to expand the data model to include other crime categories.  
+The intial analysis suggests that Staten Island would be the safest part of the New York in which to live.  The number of shootings trails behind the other boros.  However, while providing some interesting first analysis of the data set, bias is present because of the differences in population between the boros.  It will be necessary to create a better measure to compare the number of shooting incidents in each boro.  Personal bias includes the fact that I am only looking at shootings as a measure of safety.  To get a better understanding of whether Staten Island is the safest boro, it would necessary to expand the data model to include other crime categories.  
 
 ## Loaded Libraries
 ```{r, include=TRUE}
